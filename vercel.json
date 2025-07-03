@@ -1,15 +1,10 @@
 {
+  "version": 2,
   "functions": {
     "api/decrypt.py": {
-      "runtime": "@vercel/python"
+      "runtime": "vercel/python@3.12"
     }
   },
-  "builds": [
-    {
-      "src": "api/*.py",
-      "use": "@vercel/python@3.12"
-    }
-  ],
   "headers": [
     {
       "source": "/api/(.*)",
