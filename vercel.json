@@ -29,7 +29,6 @@
       ]
     }
   ],
-  "regions": ["iad1", "sfo1"],
   "env": {
     "PYTHONPATH": "/var/task"
   }
