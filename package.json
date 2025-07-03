@@ -1,0 +1,12 @@
+{
+  "name": "decrypt-api",
+  "version": "1.0.0",
+  "description": "Password Decryption API for Vercel using Python",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "devDependencies": {
+    "vercel": "^32.0.0"
+  }
+}
