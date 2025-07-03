@@ -4,6 +4,12 @@
       "runtime": "@vercel/python"
     }
   },
+  "builds": [
+    {
+      "src": "api/*.py",
+      "use": "@vercel/python@3.12"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
