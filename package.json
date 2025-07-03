@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Password Decryption API for Vercel using Python",
   "scripts": {
-    "dev": "vercel dev",
+    "start": "vercel dev",
     "deploy": "vercel --prod"
   },
   "devDependencies": {

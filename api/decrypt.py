@@ -1,9 +1,8 @@
 # api/decrypt.py
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import base64
-import json
 import os
-from http.server import BaseHTTPRequestHandler
-from urllib.parse import parse_qs
 
 # Cross-platform encryption imports
 try:
@@ -13,6 +12,9 @@ try:
 except ImportError:
     print("Missing pycryptodome dependency")
     AES = None
+
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 
 def decrypt_password(os_type, encrypted_password, enc_key):
@@ -92,147 +94,178 @@ def create_sample_encrypted_data(password, master_key):
         return f"Error creating sample data: {e}"
 
 
-class handler(BaseHTTPRequestHandler):
-    def do_OPTIONS(self):
-        """Handle CORS preflight requests"""
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        self.end_headers()
-
-    def do_POST(self):
-        """Handle POST requests"""
-        try:
-            # Set CORS headers
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-            self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-            
-            # Read request body
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length).decode('utf-8')
-            
-            # Parse JSON data
-            try:
-                data = json.loads(post_data)
-            except json.JSONDecodeError:
-                self.send_error_response(400, "Invalid JSON format")
-                return
-            
-            # Extract parameters
-            action = data.get('action')
-            encrypted_password = data.get('encrypted_password')
-            master_key = data.get('master_key')
-            os_type = data.get('os_type', 'linux')  # Default to linux for Vercel
-            
-            if action == 'decrypt':
-                if not encrypted_password or not master_key:
-                    self.send_error_response(400, "encrypted_password and master_key are required")
-                    return
-                
-                # Decode base64 inputs
-                try:
-                    enc_password_bytes = base64.b64decode(encrypted_password)
-                    master_key_bytes = base64.b64decode(master_key)
-                except Exception as e:
-                    self.send_error_response(400, f"Invalid base64 encoding: {e}")
-                    return
-                
-                # Decrypt password
-                decrypted = decrypt_password(os_type, enc_password_bytes, master_key_bytes)
-                
-                response = {
-                    'success': True,
-                    'decrypted_password': decrypted,
-                    'os_type': os_type
-                }
-                
-                self.send_json_response(200, response)
-                
-            elif action == 'create_sample':
-                # Create sample encrypted data for testing
-                password = data.get('password', 'test123')
-                master_key = data.get('master_key_raw', 'sample_master_key_32_bytes_long!!')
-                
-                if len(master_key) < 32:
-                    master_key = master_key.ljust(32, '0')
-                
-                encrypted_sample = create_sample_encrypted_data(password, master_key.encode())
-                
-                response = {
-                    'success': True,
-                    'encrypted_password': encrypted_sample,
-                    'master_key': base64.b64encode(master_key.encode()).decode(),
-                    'original_password': password
-                }
-                
-                self.send_json_response(200, response)
-                
-            else:
-                self.send_error_response(400, "Invalid action. Use 'decrypt' or 'create_sample'")
-                
-        except Exception as e:
-            self.send_error_response(500, f"Internal server error: {str(e)}")
-
-    def do_GET(self):
-        """Handle GET requests - return API documentation"""
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        
-        docs = {
-            'message': 'Password Decryption API',
-            'endpoints': {
-                'POST /api/decrypt': {
-                    'description': 'Decrypt password using master key',
-                    'parameters': {
-                        'action': 'decrypt',
-                        'encrypted_password': 'base64 encoded encrypted password',
-                        'master_key': 'base64 encoded master key',
-                        'os_type': 'optional: win32, darwin, or linux (default: linux)'
-                    }
-                },
-                'POST /api/decrypt (create_sample)': {
-                    'description': 'Create sample encrypted data for testing',
-                    'parameters': {
-                        'action': 'create_sample',
-                        'password': 'plain text password to encrypt',
-                        'master_key_raw': 'master key as string'
-                    }
+@app.route('/', methods=['GET'])
+def get_docs():
+    """API Documentation"""
+    docs = {
+        'message': 'Password Decryption API',
+        'version': '1.0.0',
+        'endpoints': {
+            'GET /': {
+                'description': 'API documentation'
+            },
+            'POST /decrypt': {
+                'description': 'Decrypt password using master key',
+                'parameters': {
+                    'encrypted_password': 'base64 encoded encrypted password',
+                    'master_key': 'base64 encoded master key',
+                    'os_type': 'optional: win32, darwin, or linux (default: linux)'
                 }
             },
-            'example_requests': [
-                {
-                    'action': 'create_sample',
+            'POST /create-sample': {
+                'description': 'Create sample encrypted data for testing',
+                'parameters': {
+                    'password': 'plain text password to encrypt',
+                    'master_key_raw': 'master key as string'
+                }
+            }
+        },
+        'example_requests': [
+            {
+                'endpoint': 'POST /create-sample',
+                'body': {
                     'password': 'mypassword123',
                     'master_key_raw': 'my_secret_master_key_32_chars!!'
-                },
-                {
-                    'action': 'decrypt',
+                }
+            },
+            {
+                'endpoint': 'POST /decrypt',
+                'body': {
                     'encrypted_password': 'base64_encrypted_data',
                     'master_key': 'base64_master_key',
                     'os_type': 'linux'
                 }
-            ]
-        }
+            }
+        ]
+    }
+    
+    return jsonify(docs)
+
+
+@app.route('/decrypt', methods=['POST'])
+def decrypt_endpoint():
+    """Decrypt password endpoint"""
+    try:
+        data = request.get_json()
+        print(data)
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No JSON data provided'
+            }), 400
         
-        self.wfile.write(json.dumps(docs, indent=2).encode('utf-8'))
+        # Extract parameters
+        encrypted_password = data.get('encrypted_password')
+        master_key = data.get('master_key')
+        os_type = data.get('os_type', 'linux')  # Default to linux for Vercel
+        
+        if not encrypted_password or not master_key:
+            return jsonify({
+                'success': False,
+                'error': 'encrypted_password and master_key are required'
+            }), 400
+        
+        # Decode base64 inputs
+        try:
+            enc_password_bytes = base64.b64decode(encrypted_password)
+            master_key_bytes = base64.b64decode(master_key)
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid base64 encoding: {str(e)}'
+            }), 400
+        
+        # Decrypt password
+        decrypted = decrypt_password(os_type, enc_password_bytes, master_key_bytes)
+        
+        return jsonify({
+            'success': True,
+            'decrypted_password': decrypted,
+            'os_type': os_type
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Internal server error: {str(e)}'
+        }), 500
 
-    def send_json_response(self, status_code, data):
-        """Send JSON response"""
-        self.send_response(status_code)
-        self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode('utf-8'))
 
-    def send_error_response(self, status_code, message):
-        """Send error response"""
-        self.send_response(status_code)
-        self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        error_data = {'success': False, 'error': message}
-        self.wfile.write(json.dumps(error_data).encode('utf-8'))
+@app.route('/create-sample', methods=['POST'])
+def create_sample_endpoint():
+    """Create sample encrypted data for testing"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No JSON data provided'
+            }), 400
+        
+        # Extract parameters
+        password = data.get('password', 'test123')
+        master_key_raw = data.get('master_key_raw', 'sample_master_key_32_bytes_long!!')
+        
+        # Ensure master key is 32 bytes
+        if len(master_key_raw) < 32:
+            master_key_raw = master_key_raw.ljust(32, '0')
+        elif len(master_key_raw) > 32:
+            master_key_raw = master_key_raw[:32]
+        
+        # Create sample encrypted data
+        encrypted_sample = create_sample_encrypted_data(password, master_key_raw.encode())
+        
+        return jsonify({
+            'success': True,
+            'encrypted_password': encrypted_sample,
+            'master_key': base64.b64encode(master_key_raw.encode()).decode(),
+            'original_password': password,
+            'info': 'Use these values with the /decrypt endpoint'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Internal server error: {str(e)}'
+        }), 500
+
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'service': 'password-decryption-api',
+        'version': '1.0.0'
+    })
+
+
+# Error handlers
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({
+        'success': False,
+        'error': 'Endpoint not found'
+    }), 404
+
+
+@app.errorhandler(405)
+def method_not_allowed(error):
+    return jsonify({
+        'success': False,
+        'error': 'Method not allowed'
+    }), 405
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({
+        'success': False,
+        'error': 'Internal server error'
+    }), 500
+
+
+# For Vercel
+if __name__ == '__main__':
+    app.run(debug=True)
