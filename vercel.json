@@ -1,8 +1,8 @@
 {
   "version": 2,
   "functions": {
-    "api/decrypt.py": {
-      "runtime": "python@3.12"
+    "api/*.py": {
+      "maxDuration": 60
     }
   },
   "headers": [
